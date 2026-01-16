@@ -9,6 +9,7 @@ const cookieParser = require("cookie-parser")
 const app = express()
 const PORT = process.env.PORT || 3000
 
+/* ===================== MIDDLEWARE ===================== */
 app.use(cors())
 app.use(cookieParser())
 app.set("trust proxy", true)
@@ -16,8 +17,10 @@ app.use(express.json())
 app.use(express.static("imgtools"))
 app.use("/uploads", express.static("uploads"))
 
+/* ===================== UPLOAD FOLDER ===================== */
 if (!fs.existsSync("uploads")) fs.mkdirSync("uploads")
 
+/* ===================== MULTER ===================== */
 const storage = multer.diskStorage({
   destination: "uploads/",
   filename: (_, file, cb) => {
@@ -30,13 +33,18 @@ const upload = multer({
   limits: { fileSize: 10 * 1024 * 1024 }
 })
 
+/* ===================== HELPERS ===================== */
 const fileURL = (req, file) =>
   `${req.protocol}://${req.get("host")}/uploads/${file.filename}`
 
+/* ===================== REMOVE BG ===================== */
 app.post("/removebg", upload.single("image"), async (req, res) => {
   try {
     const img = fileURL(req, req.file)
-    const api = "https://api-library-kohi.onrender.com/api/removebg?url=" + encodeURIComponent(img)
+    const api =
+      "https://api-library-kohi.onrender.com/api/removebg?url=" +
+      encodeURIComponent(img)
+
     const r = await axios.get(api)
     res.json({ url: r.data.data.url })
   } catch {
@@ -44,10 +52,14 @@ app.post("/removebg", upload.single("image"), async (req, res) => {
   }
 })
 
+/* ===================== UPSCALE ===================== */
 app.post("/upscale", upload.single("image"), async (req, res) => {
   try {
     const img = fileURL(req, req.file)
-    const api = "https://api-library-kohi.onrender.com/api/upscale?url=" + encodeURIComponent(img)
+    const api =
+      "https://api-library-kohi.onrender.com/api/upscale?url=" +
+      encodeURIComponent(img)
+
     const r = await axios.get(api)
     res.json({ url: r.data.data.url })
   } catch {
@@ -55,22 +67,55 @@ app.post("/upscale", upload.single("image"), async (req, res) => {
   }
 })
 
+/* ===================== BLUR (FIXED) ===================== */
 app.post("/blur", upload.single("image"), async (req, res) => {
   try {
     const img = fileURL(req, req.file)
-    res.json({ url: "https://api.popcat.xyz/v2/blur?image=" + encodeURIComponent(img) })
+
+    // Popcat returns image directly → return final image URL
+    const api =
+      "https://api.popcat.xyz/v2/blur?image=" +
+      encodeURIComponent(img)
+
+    res.json({ url: api })
   } catch {
     res.status(500).json({ error: true })
   }
 })
 
+/* ===================== IMAGE DOWNLOAD ===================== */
+app.get("/download", async (req, res) => {
+  try {
+    const url = req.query.url
+    if (!url) return res.status(400).end()
+
+    const response = await axios.get(url, { responseType: "stream" })
+    const filename =
+      "image_" + Date.now() + path.extname(url.split("?")[0] || ".png")
+
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="${filename}"`
+    )
+    res.setHeader("Content-Type", "application/octet-stream")
+
+    response.data.pipe(res)
+  } catch {
+    res.status(500).end()
+  }
+})
+
+/* ===================== INFO ===================== */
 app.get("/info", (req, res) => {
   res.json({
-    ip: req.headers["x-forwarded-for"]?.split(",")[0] || req.socket.remoteAddress,
+    ip:
+      req.headers["x-forwarded-for"]?.split(",")[0] ||
+      req.socket.remoteAddress,
     time: new Date().toISOString()
   })
 })
 
+/* ===================== TERMS COOKIE ===================== */
 app.post("/accept-terms", (req, res) => {
   res.cookie("termsAccepted", "true", {
     maxAge: 31536000000,
@@ -80,23 +125,7 @@ app.post("/accept-terms", (req, res) => {
   res.json({ success: true })
 })
 
-app.get("/download", async (req, res) => {
-  try {
-    const url = req.query.url
-    if (!url) return res.status(400).end()
-
-    const response = await axios.get(url, { responseType: "stream" })
-    const filename = "image_" + Date.now() + path.extname(url.split("?")[0] || ".png")
-
-    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`)
-    res.setHeader("Content-Type", "application/octet-stream")
-
-    response.data.pipe(res)
-  } catch {
-    res.status(500).end()
-  }
-})
-
+/* ===================== AUTO CLEAN UPLOADS ===================== */
 setInterval(() => {
   fs.readdir("uploads", (_, files) => {
     if (!files) return
@@ -111,6 +140,7 @@ setInterval(() => {
   })
 }, 1800000)
 
+/* ===================== START SERVER ===================== */
 app.listen(PORT, () => {
   console.log("Backend running on http://localhost:" + PORT)
 })
